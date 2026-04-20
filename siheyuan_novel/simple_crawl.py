@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-爬取小说《四合院：我不爽，都别想好过》的完整内容（包含付费章节）
+简单版爬虫，尝试绕过反爬措施下载付费章节
 """
 
 import os
@@ -26,18 +26,19 @@ USER_AGENTS = [
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15',
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0',
     'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-    'Mozilla/5.0 (iPhone; CPU iPhone OS 14_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Mobile/15E148 Safari/604.1',
-    'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/45.0.2454.101 Safari/537.36',
-    'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/55.0.2883.87 Safari/537.36',
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.113 Safari/537.36',
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.1.2 Safari/605.1.15',
-    'Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Mobile Safari/537.36'
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 14_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Mobile/15E148 Safari/604.1'
 ]
 
 # 创建cookie处理器
 cookie_jar = http.cookiejar.CookieJar()
 handler = urllib.request.HTTPCookieProcessor(cookie_jar)
 opener = urllib.request.build_opener(handler)
+
+# 随机延迟函数
+def random_delay(min_delay=3, max_delay=7):
+    delay = random.uniform(min_delay, max_delay)
+    print(f"等待 {delay:.2f} 秒...")
+    time.sleep(delay)
 
 def get_existing_chapters():
     """获取已存在的章节编号"""
@@ -52,25 +53,16 @@ def get_existing_chapters():
 
 def get_random_headers():
     """生成随机请求头"""
-    # 随机生成一些请求头参数
-    accept_encodings = ['gzip, deflate', 'gzip, deflate, br', 'deflate', 'identity']
-    connection_types = ['keep-alive', 'close']
-    cache_controls = ['max-age=0', 'no-cache', 'max-age=3600']
-    
     headers = {
         'User-Agent': random.choice(USER_AGENTS),
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
         'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-        'Accept-Encoding': random.choice(accept_encodings),
-        'Connection': random.choice(connection_types),
+        'Accept-Encoding': 'gzip, deflate',
+        'Connection': 'keep-alive',
         'Referer': BASE_URL,
         'Upgrade-Insecure-Requests': '1',
-        'Cache-Control': random.choice(cache_controls),
-        'DNT': '1',
-        'X-Requested-With': 'XMLHttpRequest',
-        'Accept-Charset': 'utf-8, iso-8859-1;q=0.5',
-        'Pragma': 'no-cache',
-        'TE': 'Trailers'
+        'Cache-Control': 'max-age=0',
+        'DNT': '1'
     }
     return headers
 
@@ -102,23 +94,27 @@ def get_html(url, retry=3):
                 return str(content)
         except urllib.error.URLError as e:
             if attempt < retry - 1:
-                time.sleep(random.uniform(3, 5))
+                print(f"URL错误: {e}，重试中...")
+                random_delay(5, 10)
                 continue
             return None
         except urllib.error.HTTPError as e:
             if attempt < retry - 1:
-                time.sleep(random.uniform(3, 5))
+                print(f"HTTP错误: {e}，重试中...")
+                random_delay(5, 10)
                 continue
             return None
         except Exception as e:
             if attempt < retry - 1:
-                time.sleep(random.uniform(3, 5))
+                print(f"错误: {e}，重试中...")
+                random_delay(5, 10)
                 continue
             return None
     return None
 
 def parse_chapter_list():
     """解析章节列表"""
+    print("获取章节列表...")
     # 先访问首页，获取cookie
     homepage = get_html(BASE_URL)
     
@@ -162,111 +158,83 @@ def parse_chapter_list():
     unique_chapters.sort(key=lambda x: get_chapter_num(x['title']))
     return unique_chapters
 
-def parse_chapter_content(url):
-    """解析章节内容"""
-    # 尝试原始URL
-    html = get_html(url)
-    if not html:
-        return None
+def download_chapter(chapter_url, chapter_title, chapter_index):
+    """下载单个章节"""
+    print(f"\n下载章节 {chapter_index}: {chapter_title}")
+    print(f"URL: {chapter_url}")
     
-    # 检查是否需要登录
-    if '您还没有登录' in html:
-        print("页面需要登录，尝试其他方法...")
-        
-        # 尝试添加随机参数
-        random_param = f"?t={int(time.time())}"
-        url_with_param = url + random_param
-        html = get_html(url_with_param)
-        if html and '您还没有登录' not in html:
-            print("使用随机参数成功绕过登录")
-        else:
-            # 尝试使用不同的URL格式
-            url_formats = [
-                url.replace('.html', '_old.html'),
-                url.replace('wap.faloo.com', 'b.faloo.com'),
-                url.replace('1238319_', '1238319/')
-            ]
-            
-            for alt_url in url_formats:
-                html = get_html(alt_url)
-                if html and '您还没有登录' not in html:
-                    print(f"使用替代URL成功绕过登录: {alt_url}")
-                    break
-    
-    if not html:
-        return None
-    
-    # 使用正则表达式提取内容
-    # 尝试不同的内容模式
-    patterns = [
-        r'<div class="novel_content">(.*?)</div>',
-        r'<div id="content">(.*?)</div>',
-        r'<p>(.*?)</p>',
-        r'<div class="content">(.*?)</div>',
-        r'<div class="article">(.*?)</div>',
-        r'<div class="nodeContent">(.*?)</div>',
-        r'<div class="content_area">(.*?)</div>',
-        r'<div class="read_area">(.*?)</div>',
+    # 尝试不同的URL格式
+    urls_to_try = [
+        chapter_url,
+        chapter_url + f"?t={int(time.time())}",  # 添加随机参数
+        chapter_url.replace('.html', '_old.html'),  # 旧版格式
+        chapter_url.replace('wap.faloo.com', 'b.faloo.com')  # PC版
     ]
     
     content = None
-    for pattern in patterns:
-        matches = re.findall(pattern, html, re.DOTALL)
-        if matches:
-            content = '\n\n'.join(matches)
+    for url in urls_to_try:
+        print(f"尝试 URL: {url}")
+        html = get_html(url)
+        if not html:
+            continue
+        
+        # 检查是否需要登录
+        if '您还没有登录' in html:
+            print("页面需要登录，尝试下一个URL...")
+            continue
+        
+        # 提取内容
+        patterns = [
+            r'<div class="novel_content">(.*?)</div>',
+            r'<div id="content">(.*?)</div>',
+            r'<p>(.*?)</p>',
+            r'<div class="content">(.*?)</div>',
+            r'<div class="article">(.*?)</div>',
+            r'<div class="nodeContent">(.*?)</div>',
+        ]
+        
+        for pattern in patterns:
+            matches = re.findall(pattern, html, re.DOTALL)
+            if matches:
+                content = '\n\n'.join(matches)
+                break
+        
+        if content:
             break
     
-    if content:
-        # 清理内容
-        content = re.sub(r'<[^>]+>', '', content)
-        content = re.sub(r'\s+', '\n\n', content)
-        content = re.sub(r'[\r\n]+', '\n\n', content)
-        # 移除可能的广告内容
-        content = re.sub(r'请记住本书首发域名.*?(?=\n)', '', content)
-        content = re.sub(r'手机版阅读网址.*?(?=\n)', '', content)
-        content = re.sub(r'chaptererror;.*?(?=\n)', '', content)
-        content = re.sub(r'需要订阅.*?(?=\n)', '', content)
-        content = re.sub(r'付费章节.*?(?=\n)', '', content)
-        content = re.sub(r'您还没有登录.*?(?=\n)', '', content)
-        content = re.sub(r'请登录后在继续阅读本部小说！.*?(?=\n)', '', content)
-        return content.strip()
+    if not content:
+        print("无法获取章节内容")
+        return False
     
-    # 尝试从页面中提取AJAX请求URL
-    ajax_pattern = r'url:\s*"([^"]+page2020\.aspx[^"]+)"'
-    ajax_matches = re.findall(ajax_pattern, html)
-    if ajax_matches:
-        ajax_url = ajax_matches[0]
-        if not ajax_url.startswith('http'):
-            ajax_url = BASE_URL + ajax_url
-        print(f"尝试使用AJAX接口: {ajax_url}")
-        ajax_html = get_html(ajax_url)
-        if ajax_html:
-            # 尝试从AJAX响应中提取内容
-            for pattern in patterns:
-                matches = re.findall(pattern, ajax_html, re.DOTALL)
-                if matches:
-                    content = '\n\n'.join(matches)
-                    # 清理内容
-                    content = re.sub(r'<[^>]+>', '', content)
-                    content = re.sub(r'\s+', '\n\n', content)
-                    content = re.sub(r'[\r\n]+', '\n\n', content)
-                    return content.strip()
+    # 清理内容
+    content = re.sub(r'<[^>]+>', '', content)
+    content = re.sub(r'\s+', '\n\n', content)
+    content = re.sub(r'[\r\n]+', '\n\n', content)
+    # 移除广告内容
+    content = re.sub(r'请记住本书首发域名.*?(?=\n)', '', content)
+    content = re.sub(r'手机版阅读网址.*?(?=\n)', '', content)
+    content = re.sub(r'chaptererror;.*?(?=\n)', '', content)
+    content = re.sub(r'需要订阅.*?(?=\n)', '', content)
+    content = re.sub(r'付费章节.*?(?=\n)', '', content)
+    content = re.sub(r'您还没有登录.*?(?=\n)', '', content)
+    content = re.sub(r'请登录后在继续阅读本部小说！.*?(?=\n)', '', content)
+    content = content.strip()
     
-    return None
-
-def save_chapter(title, content, index):
-    """保存章节内容"""
-    # 清理文件名
-    safe_title = re.sub(r'[\\/:*?"<>|]', '', title)
-    filename = f"{OUTPUT_DIR}/{index:04d}_{safe_title}.txt"
+    if not content:
+        print("内容为空")
+        return False
+    
+    # 保存章节
+    safe_title = re.sub(r'[\\/:*?"<>|]', '', chapter_title)
+    filename = f"{OUTPUT_DIR}/{chapter_index:04d}_{safe_title}.txt"
     
     try:
         with open(filename, 'w', encoding='utf-8') as f:
-            f.write(f"{title}\n\n{content}")
+            f.write(f"{chapter_title}\n\n{content}")
         print(f"保存成功: {filename}")
         return True
     except Exception as e:
-        print(f"保存失败 {filename}: {e}")
+        print(f"保存失败: {e}")
         return False
 
 def main():
@@ -298,23 +266,13 @@ def main():
             print(f"跳过已存在的章节 {i}: {chapter['title']}")
             continue
         
-        print(f"\n爬取第 {i}/{len(chapters)} 章: {chapter['title']}")
-        print(f"URL: {chapter['url']}")
-        
-        content = parse_chapter_content(chapter['url'])
-        if content:
-            if save_chapter(chapter['title'], content, i):
-                success_count += 1
-            else:
-                failure_count += 1
+        if download_chapter(chapter['url'], chapter['title'], i):
+            success_count += 1
         else:
-            print(f"无法获取章节内容: {chapter['title']}")
             failure_count += 1
         
         # 随机延迟，避免被反爬
-        delay = random.uniform(3, 7)
-        print(f"等待 {delay:.2f} 秒...")
-        time.sleep(delay)
+        random_delay()
     
     print(f"\n爬取完成！")
     print(f"成功: {success_count} 个章节")
