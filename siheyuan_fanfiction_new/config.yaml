@@ -1,0 +1,45 @@
+
+project:
+  name: "四合院：开局情绪能量系统"
+  type: "年代同人"
+  target_chapters: 500
+  chapter_length: 2000
+  current_chapter: 1
+  start_year: 1955
+  current_year: 1955
+
+style:
+  language: "中文"
+  tone: "口语化、幽默"
+  POV: "第三人称"
+  dialogue_style: "生动、符合人物身份"
+
+world:
+  main_location: "南锣鼓巷95号四合院"
+  secondary_locations: ["红星轧钢厂", "街道办事处", "供销社"]
+  time_period: "1955年-1980年代"
+  rules:
+    - 情绪能量系统
+    - 年代背景真实
+    - 四合院人物关系
+
+characters:
+  protagonist: "林枫"
+  system: "情绪能量系统"
+  main_cast: ["易忠海", "刘海忠", "闫埠贵", "贾张氏", "贾东旭", "秦淮茹", "傻柱", "许大茂"]
+
+plot:
+  main_arc: "主角在四合院世界通过情绪能量系统不断成长"
+  pacing: "爽文节奏，有冲突有收获"
+  key_plot_points: ["四合院日常冲突", "工作发展", "感情线", "系统升级"]
+
+system_rules:
+  name: "情绪能量系统"
+  functions:
+    - 情绪收集：收集周围人的情绪能量
+    - 系统背包：存储物品
+    - 情绪共鸣：感知他人情绪
+    - 抽奖系统：消耗情绪能量抽奖
+  currency: "情绪能量"
+  progression: "通过收集情绪能量解锁更多功能"
+
