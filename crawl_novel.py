@@ -14,19 +14,20 @@ def get_novel_info(url):
     # 获取章节列表
     chapter_list = []
     
-    # 分页爬取所有章节，最多爬取10页（足够700多章）
-    max_pages = 10
-    for page in range(1, max_pages + 1):
-        # 构建分页URL
-        if page == 1:
-            page_url = url
-        else:
-            page_url = f'{url}?page={page}'
-        
-        print(f'正在爬取第 {page} 页目录...')
+    # 具体的分页链接
+    page_urls = [
+        'https://www.erciyan.com/book/95134517/',      # 1-200章
+        'https://www.erciyan.com/book/95134517/2/',    # 201-400章
+        'https://www.erciyan.com/book/95134517/3/',    # 401-600章
+        'https://www.erciyan.com/book/95134517/4/'     # 601-749+两张番外
+    ]
+    
+    for page_num, page_url in enumerate(page_urls, 1):
+        print(f'正在爬取第 {page_num} 页目录: {page_url}')
         
         # 添加错误处理和重试
         max_retries = 3
+        response = None
         for retry in range(max_retries):
             try:
                 response = requests.get(page_url, headers=headers, timeout=10)
@@ -35,52 +36,56 @@ def get_novel_info(url):
             except Exception as e:
                 print(f'第 {retry+1} 次尝试失败: {e}')
                 if retry == max_retries - 1:
-                    print(f'第 {page} 页爬取失败，跳过...')
+                    print(f'第 {page_num} 页爬取失败，跳过...')
                     continue
+        
+        if not response:
+            continue
         
         # 解析页面
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # 查找章节列表容器
-        chapter_container = soup.find('div', class_='chapter-list')
-        if not chapter_container:
-            # 尝试其他可能的容器
-            chapter_container = soup.find('div', id='chapter-list')
+        # 查找章节列表容器，避免最新章节部分
+        chapter_container = None
         
-        if chapter_container:
-            chapter_elements = chapter_container.find_all('a')
-            print(f'第 {page} 页找到 {len(chapter_elements)} 个章节链接')
-            
-            if len(chapter_elements) == 0:
-                break  # 没有更多章节，退出循环
-            
-            for chapter in chapter_elements:
-                href = chapter.get('href', '')
-                text = chapter.text.strip()
-                if href and text:
-                    chapter_title = text
-                    chapter_url = href
-                    if not chapter_url.startswith('http'):
-                        chapter_url = 'https://www.erciyan.com' + chapter_url
-                    chapter_list.append((chapter_title, chapter_url))
-        else:
-            # 尝试直接查找所有符合模式的链接
-            all_links = soup.find_all('a')
-            page_chapters = 0
-            for link in all_links:
+        # 查找所有div，找到真正的章节列表
+        divs = soup.find_all('div')
+        for div in divs:
+            # 检查div是否包含章节链接
+            links = div.find_all('a')
+            has_chapter_links = False
+            for link in links:
                 href = link.get('href', '')
-                text = link.text.strip()
                 if '/book/95134517/' in href and '.html' in href:
+                    has_chapter_links = True
+                    break
+            
+            # 找到包含章节链接的div，且不是最新章节部分
+            if has_chapter_links:
+                # 检查是否是最新章节部分（通常包含"最新章节"等字样）
+                if not any(keyword in div.text for keyword in ['最新章节', '最近更新', '最新更新']):
+                    chapter_container = div
+                    break
+        
+        # 直接查找所有符合模式的链接
+        all_links = soup.find_all('a')
+        page_chapters = 0
+        for link in all_links:
+            href = link.get('href', '')
+            text = link.text.strip()
+            # 只保留包含章节号的链接，排除其他链接
+            if '/book/95134517/' in href and '.html' in href and 'javascript:' not in href:
+                # 提取章节号进行验证
+                import re
+                match = re.search(r'第(\d+)章', text)
+                if match or '番外' in text:
                     chapter_title = text
                     chapter_url = href
                     if not chapter_url.startswith('http'):
                         chapter_url = 'https://www.erciyan.com' + chapter_url
                     chapter_list.append((chapter_title, chapter_url))
                     page_chapters += 1
-            print(f'第 {page} 页找到 {page_chapters} 个章节链接')
-            
-            if page_chapters == 0:
-                break  # 没有更多章节，退出循环
+        print(f'第 {page_num} 页找到 {page_chapters} 个章节链接')
     
     # 去重，避免重复章节
     chapter_list = list(set(chapter_list))
