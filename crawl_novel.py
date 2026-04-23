@@ -45,63 +45,52 @@ def get_novel_info(url):
         # 解析页面
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # 查找章节列表容器，避免最新章节部分
-        chapter_container = None
-        
-        # 查找所有div，找到真正的章节列表
-        divs = soup.find_all('div')
-        for div in divs:
-            # 检查div是否包含章节链接
-            links = div.find_all('a')
-            has_chapter_links = False
-            for link in links:
-                href = link.get('href', '')
-                if '/book/95134517/' in href and '.html' in href:
-                    has_chapter_links = True
-                    break
-            
-            # 找到包含章节链接的div，且不是最新章节部分
-            if has_chapter_links:
-                # 检查是否是最新章节部分（通常包含"最新章节"等字样）
-                if not any(keyword in div.text for keyword in ['最新章节', '最近更新', '最新更新']):
-                    chapter_container = div
-                    break
-        
-        # 直接查找所有符合模式的链接
+        # 直接查找所有章节链接
         all_links = soup.find_all('a')
         page_chapters = 0
+        
         for link in all_links:
             href = link.get('href', '')
             text = link.text.strip()
-            # 只保留包含章节号的链接，排除其他链接
+            
+            # 过滤条件：
+            # 1. 包含小说ID的链接
+            # 2. 包含.html
+            # 3. 不是javascript链接
+            # 4. 包含章节号或番外
             if '/book/95134517/' in href and '.html' in href and 'javascript:' not in href:
-                # 提取章节号进行验证
                 import re
-                match = re.search(r'第(\d+)章', text)
-                if match or '番外' in text:
-                    chapter_title = text
-                    chapter_url = href
-                    if not chapter_url.startswith('http'):
-                        chapter_url = 'https://www.erciyan.com' + chapter_url
-                    chapter_list.append((chapter_title, chapter_url))
+                # 提取章节号
+                chapter_match = re.search(r'第(\d+)章', text)
+                if chapter_match or '番外' in text:
+                    # 构建完整URL
+                    if not href.startswith('http'):
+                        href = 'https://www.erciyan.com' + href
+                    
+                    # 添加到章节列表
+                    chapter_list.append((text, href))
                     page_chapters += 1
+        
         print(f'第 {page_num} 页找到 {page_chapters} 个章节链接')
     
-    # 去重，避免重复章节
-    chapter_list = list(set(chapter_list))
+    # 去重，避免重复章节（基于URL去重）
+    seen_urls = set()
+    unique_chapters = []
+    for title, url in chapter_list:
+        if url not in seen_urls:
+            seen_urls.add(url)
+            unique_chapters.append((title, url))
+    chapter_list = unique_chapters
     
-    # 按章节标题排序（尝试提取章节号进行排序）
+    # 按章节标题排序
     def sort_key(chapter):
         title = chapter[0]
-        # 尝试提取章节号
         import re
         match = re.search(r'第(\d+)章', title)
         if match:
             return int(match.group(1))
-        # 番外放在最后
         if '番外' in title:
             return 9999
-        # 其他情况
         return 0
     
     chapter_list.sort(key=sort_key)
@@ -113,8 +102,20 @@ def get_chapter_content(url):
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
     }
-    response = requests.get(url, headers=headers)
-    response.encoding = 'utf-8'
+    
+    # 添加错误处理和重试
+    max_retries = 3
+    for retry in range(max_retries):
+        try:
+            response = requests.get(url, headers=headers, timeout=10)
+            response.encoding = 'utf-8'
+            break
+        except Exception as e:
+            print(f'爬取章节失败（第{retry+1}次尝试）: {e}')
+            if retry == max_retries - 1:
+                return f'爬取失败: {e}'
+            continue
+    
     soup = BeautifulSoup(response.text, 'html.parser')
     
     # 获取章节内容
@@ -134,8 +135,21 @@ def main():
     if not os.path.exists(novel_title):
         os.makedirs(novel_title)
     
-    # 爬取所有章节
+    # 检查已爬取的章节
+    existing_chapters = set()
+    if os.path.exists(novel_title):
+        for file in os.listdir(novel_title):
+            if file.endswith('.txt'):
+                # 提取章节标题
+                title = file.split('_', 1)[1].replace('.txt', '')
+                existing_chapters.add(title)
+    
+    # 爬取未爬取的章节
     for i, (chapter_title, chapter_url) in enumerate(chapter_list, 1):
+        if chapter_title in existing_chapters:
+            print(f'跳过已爬取的章节: {chapter_title}')
+            continue
+        
         print(f'正在爬取第{i}章: {chapter_title}')
         content = get_chapter_content(chapter_url)
         
